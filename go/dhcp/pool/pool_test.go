@@ -6,9 +6,11 @@ import (
 
 func TestReserveIPIndex(t *testing.T) {
 	cap := uint64(5)
-	dp := NewDHCPPool(cap)
-
-	var err error
+	dp, err := CreatePool("memory", cap)
+	// spew.Dump(dp)
+	if err != nil {
+		t.Error("Got an error creating the pool", err)
+	}
 
 	mac := "00:11:22:33:44:55"
 
@@ -17,7 +19,7 @@ func TestReserveIPIndex(t *testing.T) {
 	}
 
 	// Try to reserve all the IPs
-	for i := uint64(0); i < dp.capacity; i++ {
+	for i := uint64(0); i < dp.GetDHCPPool().capacity; i++ {
 		err, returnedMac := dp.ReserveIPIndex(i, mac)
 		if err != nil {
 			t.Error("Got an error and shouldn't have gotten one", err)
@@ -26,7 +28,7 @@ func TestReserveIPIndex(t *testing.T) {
 			t.Error("Returned mac is not the same")
 		}
 
-		if free := dp.free[i]; free {
+		if free := dp.GetDHCPPool().free[i]; free {
 			t.Error("IP is still free although its been reserved")
 		}
 	}
@@ -48,9 +50,11 @@ func TestReserveIPIndex(t *testing.T) {
 
 func TestFreeIPIndex(t *testing.T) {
 	cap := uint64(5)
-	dp := NewDHCPPool(cap)
+	dp, err := CreatePool("memory", cap)
+	if err != nil {
+		t.Error("Got an error creating the pool", err)
+	}
 
-	var err error
 	mac := "00:11:22:33:44:55"
 
 	if err != nil {
@@ -59,8 +63,8 @@ func TestFreeIPIndex(t *testing.T) {
 
 	// Try to reserve all the IP, then free all of them
 	// Not validating ReserveIPIndex works, this is why TestReserveIPIndex is there
-	for i := uint64(0); i < dp.capacity; i++ {
-		if _, found := dp.free[i]; !found {
+	for i := uint64(0); i < dp.GetDHCPPool().capacity; i++ {
+		if _, found := dp.GetDHCPPool().free[i]; !found {
 			t.Errorf("IP address %d isn't free at the beginning of the process", i)
 		}
 
@@ -71,7 +75,7 @@ func TestFreeIPIndex(t *testing.T) {
 			t.Error("Got an error while freeing IP address", err)
 		}
 
-		if _, found := dp.free[i]; !found {
+		if _, found := dp.GetDHCPPool().free[i]; !found {
 			t.Errorf("IP address %d isn't free at the end of the process", i)
 		}
 	}
@@ -93,9 +97,11 @@ func TestFreeIPIndex(t *testing.T) {
 
 func TestGetFreeIPIndex(t *testing.T) {
 	cap := uint64(1000)
-	dp := NewDHCPPool(cap)
+	dp, err := CreatePool("memory", cap)
+	if err != nil {
+		t.Error("Got an error creating the pool", err)
+	}
 
-	var err error
 	mac := "00:11:22:33:44:55"
 
 	if err != nil {
@@ -105,7 +111,7 @@ func TestGetFreeIPIndex(t *testing.T) {
 	order1 := []uint64{}
 	seen := map[uint64]bool{}
 
-	for i := uint64(0); i < dp.capacity; i++ {
+	for i := uint64(0); i < dp.GetDHCPPool().capacity; i++ {
 		index, _, err := dp.GetFreeIPIndex(mac)
 
 		if err != nil {
@@ -116,7 +122,7 @@ func TestGetFreeIPIndex(t *testing.T) {
 			t.Error("Got previously provided IP index", index)
 		}
 
-		if free := dp.free[index]; free {
+		if free := dp.GetDHCPPool().free[index]; free {
 			t.Error("IP is still free although its been assigned")
 		}
 
@@ -133,12 +139,15 @@ func TestGetFreeIPIndex(t *testing.T) {
 	// No two pool orders should be the same when getting IPs
 	// This has a very minimal chance of failing even if the code works
 	// If it does, go buy yourself a 6/49
-	dp2 := NewDHCPPool(cap)
+	dp2, err := CreatePool("memory", cap)
+	if err != nil {
+		t.Error("Got an error creating the pool", err)
+	}
 
 	order2 := []uint64{}
 
 	// Not performing the validation in this loop, that would be replicating the work the first loop above did
-	for i := uint64(0); i < dp2.capacity; i++ {
+	for i := uint64(0); i < dp2.GetDHCPPool().capacity; i++ {
 		index, _, _ := dp2.GetFreeIPIndex(mac)
 		order2 = append(order2, index)
 	}
@@ -158,12 +167,14 @@ func TestGetFreeIPIndex(t *testing.T) {
 
 func TestFreeIPsRemaining(t *testing.T) {
 	cap := uint64(1000)
-	dp := NewDHCPPool(cap)
+	dp, err := CreatePool("memory", cap)
+	if err != nil {
+		t.Error("Got an error creating the pool", err)
+	}
 
 	var expected uint64
 	var got uint64
 
-	var err error
 	mac := "00:11:22:33:44:55"
 
 	if err != nil {
@@ -206,7 +217,10 @@ func TestFreeIPsRemaining(t *testing.T) {
 
 func TestCapacity(t *testing.T) {
 	cap := uint64(1000)
-	dp := NewDHCPPool(cap)
+	dp, err := CreatePool("memory", cap)
+	if err != nil {
+		t.Error("Got an error creating the pool", err)
+	}
 
 	if dp.Capacity() != cap {
 		t.Error("Pool capacity not equal the one provided at instantiation")
