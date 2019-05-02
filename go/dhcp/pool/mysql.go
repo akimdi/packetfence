@@ -3,8 +3,9 @@ package pool
 import (
 	"database/sql"
 	"errors"
-	_ "github.com/go-sql-driver/mysql"
 	"sync"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 type Mysql struct {
@@ -220,4 +221,50 @@ func (dp *Mysql) FreeIPsRemaining() uint64 {
 // Returns the capacity of the pool
 func (dp *Mysql) Capacity() uint64 {
 	return dp.DHCPPool.capacity
+}
+
+// Compare what we have in the cache with what we have in the pool
+func (dp *Mysql) GetIssues(macs []string) ([]string, map[uint64]string) {
+	var inPoolNotInCache []string
+	var duplicateInPool map[uint64]string
+	duplicateInPool = make(map[uint64]string)
+
+	// var count int
+	// var saveindex uint64
+	// for i := uint64(0); i < dp.DHCPPool.capacity; i++ {
+	// 	if dp.DHCPPool.free[i] {
+	// 		continue
+	// 	}
+	// 	for _, mac := range macs {
+	// 		if dp.DHCPPool.mac[i] == mac {
+	// 			found = true
+	// 		}
+	// 	}
+	// 	if !found {
+	// 		inPoolNotInCache = append(inPoolNotInCache, dp.DHCPPool.mac[i]+", "+strconv.Itoa(int(i)))
+	// 	}
+	// }
+	// for _, mac := range macs {
+	// 	count = 0
+	// 	saveindex = 0
+	//
+	// 	for i := uint64(0); i < dp.DHCPPool.capacity; i++ {
+	// 		if dp.DHCPPool.free[i] {
+	// 			continue
+	// 		}
+	// 		if dp.DHCPPool.mac[i] == mac {
+	// 			if count == 0 {
+	// 				saveindex = i
+	// 			}
+	// 			if count == 1 {
+	// 				duplicateInPool[saveindex] = mac
+	// 				duplicateInPool[i] = mac
+	// 			} else if count > 1 {
+	// 				duplicateInPool[i] = mac
+	// 			}
+	// 			count++
+	// 		}
+	// 	}
+	// }
+	return inPoolNotInCache, duplicateInPool
 }

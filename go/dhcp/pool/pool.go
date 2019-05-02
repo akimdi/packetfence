@@ -1,9 +1,9 @@
 package pool
 
 import (
+	"database/sql"
 	"fmt"
 	"sync"
-	"database/sql"
 )
 
 const FreeMac = "00:00:00:00:00:00"
@@ -20,9 +20,10 @@ type PoolBackend interface {
 	FreeIPIndex(index uint64) error
 	Capacity() uint64
 	GetDHCPPool() DHCPPool
+	GetIssues(macs []string) ([]string, map[uint64]string)
 }
 
-type PoolCreater func(uint64,string,*sql.DB) (PoolBackend, error)
+type PoolCreater func(uint64, string, *sql.DB) (PoolBackend, error)
 
 var poolLookup = map[string]PoolCreater{
 	"memory": NewMemoryPool,

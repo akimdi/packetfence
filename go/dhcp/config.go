@@ -26,7 +26,7 @@ type DHCPHandler struct {
 	leaseDuration time.Duration // Lease period
 	hwcache       *cache.Cache
 	xid           *cache.Cache
-	available     *pool.DHCPPool // DHCPPool keeps track of the available IPs in the pool
+	available     pool.PoolBackend // DHCPPool keeps track of the available IPs in the pool
 	layer2        bool
 	role          string
 	ipReserved    string
@@ -207,7 +207,7 @@ func (d *Interfaces) readConfig() {
 							DHCPScope.leaseRange = dhcp.IPRange(ip, ips)
 
 							// Initialize dhcp pool
-							available := pool.NewPool("Memory", uint64(dhcp.IPRange(ip, ips)))
+							available, _ := pool.CreatePool("Memory", uint64(dhcp.IPRange(ip, ips)), DHCPNet.network.IP.String()+Role, MySQLdatabase)
 
 							DHCPScope.available = available
 
@@ -271,7 +271,7 @@ func (d *Interfaces) readConfig() {
 						// Initialize dhcp pool
 
 						// Initialize dhcp pool
-						available := pool.NewPool("Memory", uint64(dhcp.IPRange(net.ParseIP(ConfNet.DhcpStart), net.ParseIP(ConfNet.DhcpEnd))))
+						available, _ := pool.CreatePool("Memory", uint64(dhcp.IPRange(net.ParseIP(ConfNet.DhcpStart), net.ParseIP(ConfNet.DhcpEnd))), DHCPNet.network.IP.String(), MySQLdatabase)
 
 						DHCPScope.available = available
 
