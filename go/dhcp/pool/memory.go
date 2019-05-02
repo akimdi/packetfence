@@ -1,26 +1,28 @@
 package pool
 
 import (
+	"database/sql"
 	"errors"
 	"math/rand"
 	"strconv"
 	"sync"
-
 )
 
-var Memory Memoryt
-
-type Memoryt struct {
+type Memory struct {
+	PoolName string
 	DHCPPool *DHCPPool
+	SQL      *sql.DB
 }
 
-func NewMemoryPool(capacity uint64) (PoolBackend, error) {
-	Pool := &Memoryt{}
+func NewMemoryPool(capacity uint64, name string, sql *sql.DB) (PoolBackend, error) {
+	Pool := &Memory{}
+	Pool.PoolName = name
 	Pool.NewDHCPPool(capacity)
+
 	return Pool, nil
 }
 
-func (dp *Memoryt) NewDHCPPool(capacity uint64) {
+func (dp *Memory) NewDHCPPool(capacity uint64) {
 	d := &DHCPPool{
 		lock:     &sync.Mutex{},
 		free:     make(map[uint64]bool),
@@ -33,14 +35,14 @@ func (dp *Memoryt) NewDHCPPool(capacity uint64) {
 	dp.DHCPPool = d
 }
 
-func (dp *Memoryt) GetDHCPPool() DHCPPool {
+func (dp *Memory) GetDHCPPool() DHCPPool {
 	return *dp.DHCPPool
 }
 
 // Compare what we have in the cache with what we have in the pool
-func (dp *DHCPPool) GetIssues(macs []string) ([]string, map[uint64]string) {
-	dp.lock.Lock()
-	defer dp.lock.Unlock()
+func (dp *Memory) GetIssues(macs []string) ([]string, map[uint64]string) {
+	dp.DHCPPool.lock.Lock()
+	defer dp.DHCPPool.lock.Unlock()
 	var found bool
 	found = false
 	var inPoolNotInCache []string
@@ -49,28 +51,28 @@ func (dp *DHCPPool) GetIssues(macs []string) ([]string, map[uint64]string) {
 
 	var count int
 	var saveindex uint64
-	for i := uint64(0); i < dp.capacity; i++ {
-		if dp.free[i] {
+	for i := uint64(0); i < dp.DHCPPool.capacity; i++ {
+		if dp.DHCPPool.free[i] {
 			continue
 		}
 		for _, mac := range macs {
-			if dp.mac[i] == mac {
+			if dp.DHCPPool.mac[i] == mac {
 				found = true
 			}
 		}
 		if !found {
-			inPoolNotInCache = append(inPoolNotInCache, dp.mac[i]+", "+strconv.Itoa(int(i)))
+			inPoolNotInCache = append(inPoolNotInCache, dp.DHCPPool.mac[i]+", "+strconv.Itoa(int(i)))
 		}
 	}
 	for _, mac := range macs {
 		count = 0
 		saveindex = 0
 
-		for i := uint64(0); i < dp.capacity; i++ {
-			if dp.free[i] {
+		for i := uint64(0); i < dp.DHCPPool.capacity; i++ {
+			if dp.DHCPPool.free[i] {
 				continue
 			}
-			if dp.mac[i] == mac {
+			if dp.DHCPPool.mac[i] == mac {
 				if count == 0 {
 					saveindex = i
 				}
@@ -88,7 +90,7 @@ func (dp *DHCPPool) GetIssues(macs []string) ([]string, map[uint64]string) {
 }
 
 // Reserves an IP in the pool, returns an error if the IP has already been reserved
-func (dp *Memoryt) ReserveIPIndex(index uint64, mac string) (error, string) {
+func (dp *Memory) ReserveIPIndex(index uint64, mac string) (error, string) {
 	dp.DHCPPool.lock.Lock()
 	defer dp.DHCPPool.lock.Unlock()
 
@@ -106,7 +108,7 @@ func (dp *Memoryt) ReserveIPIndex(index uint64, mac string) (error, string) {
 }
 
 // Frees an IP in the pool, returns an error if the IP is already free
-func (dp *Memoryt) FreeIPIndex(index uint64) error {
+func (dp *Memory) FreeIPIndex(index uint64) error {
 	dp.DHCPPool.lock.Lock()
 	defer dp.DHCPPool.lock.Unlock()
 
@@ -124,7 +126,7 @@ func (dp *Memoryt) FreeIPIndex(index uint64) error {
 }
 
 // Check if the IP is free at the index
-func (dp *Memoryt) IsFreeIPAtIndex(index uint64) bool {
+func (dp *Memory) IsFreeIPAtIndex(index uint64) bool {
 	dp.DHCPPool.lock.Lock()
 	defer dp.DHCPPool.lock.Unlock()
 
@@ -140,7 +142,7 @@ func (dp *Memoryt) IsFreeIPAtIndex(index uint64) bool {
 }
 
 // Check if the IP is free at the index
-func (dp *Memoryt) GetMACIndex(index uint64) (uint64, string, error) {
+func (dp *Memory) GetMACIndex(index uint64) (uint64, string, error) {
 	dp.DHCPPool.lock.Lock()
 	defer dp.DHCPPool.lock.Unlock()
 
@@ -156,7 +158,7 @@ func (dp *Memoryt) GetMACIndex(index uint64) (uint64, string, error) {
 }
 
 // Returns a random free IP address, an error if the pool is full
-func (dp *Memoryt) GetFreeIPIndex(mac string) (uint64, string, error) {
+func (dp *Memory) GetFreeIPIndex(mac string) (uint64, string, error) {
 	dp.DHCPPool.lock.Lock()
 	defer dp.DHCPPool.lock.Unlock()
 
@@ -180,18 +182,18 @@ func (dp *Memoryt) GetFreeIPIndex(mac string) (uint64, string, error) {
 }
 
 // Returns whether or not a specific index is in the capacity of the pool
-func (dp *Memoryt) IndexInPool(index uint64) bool {
+func (dp *Memory) IndexInPool(index uint64) bool {
 	return index < dp.DHCPPool.capacity
 }
 
 // Returns the amount of free IPs in the pool
-func (dp *Memoryt) FreeIPsRemaining() uint64 {
+func (dp *Memory) FreeIPsRemaining() uint64 {
 	dp.DHCPPool.lock.Lock()
 	defer dp.DHCPPool.lock.Unlock()
 	return uint64(len(dp.DHCPPool.free))
 }
 
 // Returns the capacity of the pool
-func (dp *Memoryt) Capacity() uint64 {
+func (dp *Memory) Capacity() uint64 {
 	return dp.DHCPPool.capacity
 }

@@ -2,11 +2,14 @@ package pool
 
 import (
 	"testing"
+	"database/sql"
 )
+
+var MySQLdatabase *sql.DB
 
 func TestReserveIPIndex(t *testing.T) {
 	cap := uint64(5)
-	dp, err := CreatePool("memory", cap)
+	dp, err := CreatePool("memory", cap, "PoolTest", MySQLdatabase)
 	// spew.Dump(dp)
 	if err != nil {
 		t.Error("Got an error creating the pool", err)
@@ -50,7 +53,7 @@ func TestReserveIPIndex(t *testing.T) {
 
 func TestFreeIPIndex(t *testing.T) {
 	cap := uint64(5)
-	dp, err := CreatePool("memory", cap)
+	dp, err := CreatePool("memory", cap,"PoolTest", MySQLdatabase)
 	if err != nil {
 		t.Error("Got an error creating the pool", err)
 	}
@@ -97,7 +100,7 @@ func TestFreeIPIndex(t *testing.T) {
 
 func TestGetFreeIPIndex(t *testing.T) {
 	cap := uint64(1000)
-	dp, err := CreatePool("memory", cap)
+	dp, err := CreatePool("memory", cap, "PoolTest", MySQLdatabase)
 	if err != nil {
 		t.Error("Got an error creating the pool", err)
 	}
@@ -139,7 +142,7 @@ func TestGetFreeIPIndex(t *testing.T) {
 	// No two pool orders should be the same when getting IPs
 	// This has a very minimal chance of failing even if the code works
 	// If it does, go buy yourself a 6/49
-	dp2, err := CreatePool("memory", cap)
+	dp2, err := CreatePool("memory", cap, "PollTest", MySQLdatabase)
 	if err != nil {
 		t.Error("Got an error creating the pool", err)
 	}
@@ -167,7 +170,7 @@ func TestGetFreeIPIndex(t *testing.T) {
 
 func TestFreeIPsRemaining(t *testing.T) {
 	cap := uint64(1000)
-	dp, err := CreatePool("memory", cap)
+	dp, err := CreatePool("memory", cap, "PoolTest", MySQLdatabase)
 	if err != nil {
 		t.Error("Got an error creating the pool", err)
 	}
@@ -217,7 +220,7 @@ func TestFreeIPsRemaining(t *testing.T) {
 
 func TestCapacity(t *testing.T) {
 	cap := uint64(1000)
-	dp, err := CreatePool("memory", cap)
+	dp, err := CreatePool("memory", cap, "PoolTest", MySQLdatabase)
 	if err != nil {
 		t.Error("Got an error creating the pool", err)
 	}

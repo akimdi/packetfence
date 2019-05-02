@@ -1,145 +1,223 @@
 package pool
 
 import (
+	"database/sql"
 	"errors"
-	"math/rand"
+	_ "github.com/go-sql-driver/mysql"
 	"sync"
 )
 
-var Mysql Mysqlt
-
-type Mysqlt struct {
+type Mysql struct {
+	PoolName string
 	DHCPPool *DHCPPool
+	SQL      *sql.DB
 }
 
-func NewMysqlPool(capacity uint64) (PoolBackend, error) {
-	dp := Mysqlt{}
+func NewMysqlPool(capacity uint64, name string, sql *sql.DB) (PoolBackend, error) {
+	dp := Mysql{}
+	dp.PoolName = name
+	dp.SQL = sql
 	dp.NewDHCPPool(capacity)
 	return &dp, nil
 }
 
-func (dp *Mysqlt) NewDHCPPool(capacity uint64) {
+func (dp *Mysql) NewDHCPPool(capacity uint64) {
 	d := &DHCPPool{
 		lock:     &sync.Mutex{},
 		free:     make(map[uint64]bool),
 		mac:      make(map[uint64]string),
 		capacity: capacity,
 	}
-	for i := uint64(0); i < d.capacity; i++ {
-		d.free[i] = true
+	for i := uint64(0); i < capacity; i++ {
+		// Need to test err
+		rows, _ := dp.SQL.Query("INSERT INTO dhcppool (pool_name, index) VALUES (?, ?) ON DUPLICATE KEY UPDATE id=id", dp.PoolName, i)
+		defer rows.Close()
 	}
 	dp.DHCPPool = d
 }
 
-func (dp *Mysqlt) GetDHCPPool() DHCPPool {
+func (dp *Mysql) GetDHCPPool() DHCPPool {
 	return *dp.DHCPPool
 }
 
 // Reserves an IP in the pool, returns an error if the IP has already been reserved
-func (pool *Mysqlt) ReserveIPIndex(index uint64, mac string) (error, string) {
-	pool.DHCPPool.lock.Lock()
-	defer pool.DHCPPool.lock.Unlock()
+func (dp *Mysql) ReserveIPIndex(index uint64, mac string) (error, string) {
 
-	if index >= pool.DHCPPool.capacity {
+	if index >= dp.DHCPPool.capacity {
 		return errors.New("Trying to reserve an IP that is outside the capacity of this pool"), FreeMac
 	}
+	query := "UPDATE dhcppool SET free = 0, mac = $3 WHERE index = $1 AND free = 1 AND pool_name = $2"
+	res, err := dp.SQL.Exec(query, index, dp.PoolName, mac)
 
-	if _, free := pool.DHCPPool.free[index]; free {
-		delete(pool.DHCPPool.free, index)
-		pool.DHCPPool.mac[index] = mac
-		return nil, mac
-	} else {
+	if err != nil {
 		return errors.New("IP is already reserved"), FreeMac
+	} else {
+		count, err2 := res.RowsAffected()
+		if err2 != nil {
+			return errors.New("IP is already reserved"), FreeMac
+		} else {
+			if count == 1 {
+				return nil, mac
+			} else {
+				return errors.New("IP is already reserved"), FreeMac
+			}
+		}
 	}
 }
 
 // Frees an IP in the pool, returns an error if the IP is already free
-func (dp *Mysqlt) FreeIPIndex(index uint64) error {
-	dp.DHCPPool.lock.Lock()
-	defer dp.DHCPPool.lock.Unlock()
+func (dp *Mysql) FreeIPIndex(index uint64) error {
 
 	if !dp.IndexInPool(index) {
 		return errors.New("Trying to free an IP that is outside the capacity of this pool")
 	}
 
-	if _, free := dp.DHCPPool.free[index]; free {
+	query := "UPDATE dhcppool set free = 1, mac = $3, released = NOW() WHERE index = $1 AND free = 0 AND pool_name = $2"
+	res, err := dp.SQL.Exec(query, index, dp.PoolName, FreeMac)
+
+	if err != nil {
 		return errors.New("IP is already free")
 	} else {
-		dp.DHCPPool.free[index] = true
-		delete(dp.DHCPPool.mac, index)
-		return nil
+		count, err2 := res.RowsAffected()
+		if err2 != nil {
+			return errors.New("IP is already free")
+		} else {
+			if count == 1 {
+				return nil
+			} else {
+				return errors.New("IP is already free")
+			}
+		}
 	}
 }
 
 // Check if the IP is free at the index
-func (dp *Mysqlt) IsFreeIPAtIndex(index uint64) bool {
-	dp.DHCPPool.lock.Lock()
-	defer dp.DHCPPool.lock.Unlock()
+func (dp *Mysql) IsFreeIPAtIndex(index uint64) bool {
 
 	if !dp.IndexInPool(index) {
 		return false
 	}
 
-	if _, free := dp.DHCPPool.free[index]; free {
-		return true
-	} else {
+	query := "SELECT free FROM dhcppool WHERE free = 1 AND index = $1 AND pool_name = $2"
+	res, err := dp.SQL.Exec(query, index, dp.PoolName)
+
+	if err != nil {
 		return false
+	} else {
+		count, err2 := res.RowsAffected()
+		if err2 != nil {
+			return false
+		} else {
+			if count == 1 {
+				return true
+			} else {
+				return false
+			}
+		}
 	}
 }
 
 // Check if the IP is free at the index
-func (dp *Mysqlt) GetMACIndex(index uint64) (uint64, string, error) {
-	dp.DHCPPool.lock.Lock()
-	defer dp.DHCPPool.lock.Unlock()
+func (dp *Mysql) GetMACIndex(index uint64) (uint64, string, error) {
 
 	if !dp.IndexInPool(index) {
 		return index, FreeMac, errors.New("The index is not part of the pool")
 	}
 
-	if _, free := dp.DHCPPool.free[index]; free {
+	rows, err := dp.SQL.Query("SELECT index, mac FROM dhcppool WHERE index = ? AND pool_name = ?", index, dp.PoolName)
+	defer rows.Close()
+	if err != nil {
 		return index, FreeMac, nil
-	} else {
-		return index, dp.DHCPPool.mac[index], nil
 	}
+	var (
+		Index int
+		mac   string
+	)
+	for rows.Next() {
+		err := rows.Scan(&Index, &mac)
+		if err != nil {
+			return index, FreeMac, nil
+		}
+	}
+	return uint64(Index), mac, nil
 }
 
 // Returns a random free IP address, an error if the pool is full
-func (dp *Mysqlt) GetFreeIPIndex(mac string) (uint64, string, error) {
-	dp.DHCPPool.lock.Lock()
-	defer dp.DHCPPool.lock.Unlock()
+func (dp *Mysql) GetFreeIPIndex(mac string) (uint64, string, error) {
 
-	if len(dp.DHCPPool.free) == 0 {
+	// Pool is full ?
+	rows, err := dp.SQL.Query("SELECT COUNT(*) FROM dhcppool WHERE free = 1 AND pool_name = ?", dp.PoolName)
+	defer rows.Close()
+
+	if err != nil {
 		return 0, FreeMac, errors.New("DHCP pool is full")
 	}
-	index := rand.Intn(len(dp.DHCPPool.free))
-
-	var available uint64
-	for available = range dp.DHCPPool.free {
-		if index == 0 {
-			break
+	var (
+		Count int
+	)
+	for rows.Next() {
+		err := rows.Scan(&Count)
+		if err != nil {
+			return 0, FreeMac, errors.New("DHCP pool is full")
 		}
-		index--
+		if Count == 0 {
+			return 0, FreeMac, errors.New("DHCP pool is full")
+		}
 	}
 
-	delete(dp.DHCPPool.free, available)
-	dp.DHCPPool.mac[available] = mac
+	// Search for available index
 
-	return available, mac, nil
+	tx, err := dp.SQL.Begin()
+
+	if err != nil {
+		// log.Fatal(err)
+	}
+
+	query := "UPDATE dhcppool SET mac = $1, free = 0 WHERE index = (SELECT index FROM dhcppool WHERE free = 1 AND pool_name = $2 ORDER BY RAND() LIMIT 1) AND @tmp_index := index"
+	res, err := tx.Exec(query, mac, dp.PoolName)
+
+	if err != nil {
+		return 0, FreeMac, errors.New("DHCP pool is full")
+
+	} else {
+		count, err2 := res.RowsAffected()
+		if err2 != nil {
+			return 0, FreeMac, errors.New("DHCP pool is full")
+		} else {
+			if count == 1 {
+				query = "SELECT @tmp_index"
+				rows, err = tx.Query(query)
+				var (
+					Index int
+				)
+				for rows.Next() {
+					err := rows.Scan(&Index)
+					if err != nil {
+						return uint64(Index), mac, nil
+					}
+				}
+				return 0, FreeMac, errors.New("DHCP pool is full")
+				// return true
+			} else {
+				return 0, FreeMac, errors.New("DHCP pool is full")
+			}
+		}
+	}
 }
 
 // Returns whether or not a specific index is in the capacity of the pool
-func (dp *Mysqlt) IndexInPool(index uint64) bool {
+func (dp *Mysql) IndexInPool(index uint64) bool {
 	return index < dp.DHCPPool.capacity
 }
 
 // Returns the amount of free IPs in the pool
-func (dp *Mysqlt) FreeIPsRemaining() uint64 {
+func (dp *Mysql) FreeIPsRemaining() uint64 {
 	dp.DHCPPool.lock.Lock()
 	defer dp.DHCPPool.lock.Unlock()
 	return uint64(len(dp.DHCPPool.free))
 }
 
 // Returns the capacity of the pool
-func (dp *Mysqlt) Capacity() uint64 {
+func (dp *Mysql) Capacity() uint64 {
 	return dp.DHCPPool.capacity
 }

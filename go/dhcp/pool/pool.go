@@ -3,6 +3,7 @@ package pool
 import (
 	"fmt"
 	"sync"
+	"database/sql"
 )
 
 const FreeMac = "00:00:00:00:00:00"
@@ -21,16 +22,16 @@ type PoolBackend interface {
 	GetDHCPPool() DHCPPool
 }
 
-type PoolCreater func(uint64) (PoolBackend, error)
+type PoolCreater func(uint64,string,*sql.DB) (PoolBackend, error)
 
 var poolLookup = map[string]PoolCreater{
 	"memory": NewMemoryPool,
 	"mysql":  NewMysqlPool,
 }
 
-func CreatePool(poolType string, capacity uint64) (PoolBackend, error) {
+func CreatePool(poolType string, capacity uint64, name string, sql *sql.DB) (PoolBackend, error) {
 	if creater, found := poolLookup[poolType]; found {
-		return creater(capacity)
+		return creater(capacity, name, sql)
 	}
 
 	return nil, fmt.Errorf("Pool of %s not found", poolType)
