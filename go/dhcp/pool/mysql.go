@@ -31,7 +31,7 @@ func (dp *Mysql) NewDHCPPool(capacity uint64) {
 	}
 	for i := uint64(0); i < capacity; i++ {
 		// Need to test err
-		rows, _ := dp.SQL.Query("INSERT INTO dhcppool (pool_name, index) VALUES (?, ?) ON DUPLICATE KEY UPDATE id=id", dp.PoolName, i)
+		rows, _ := dp.SQL.Query("INSERT INTO dhcppool (pool_name, idx) VALUES (?, ?) ON DUPLICATE KEY UPDATE id=id", dp.PoolName, i)
 		defer rows.Close()
 	}
 	dp.DHCPPool = d
@@ -47,7 +47,7 @@ func (dp *Mysql) ReserveIPIndex(index uint64, mac string) (error, string) {
 	if index >= dp.DHCPPool.capacity {
 		return errors.New("Trying to reserve an IP that is outside the capacity of this pool"), FreeMac
 	}
-	query := "UPDATE dhcppool SET free = 0, mac = $3 WHERE index = $1 AND free = 1 AND pool_name = $2"
+	query := "UPDATE dhcppool SET free = 0, mac = $3 WHERE idx = $1 AND free = 1 AND pool_name = $2"
 	res, err := dp.SQL.Exec(query, index, dp.PoolName, mac)
 
 	if err != nil {
@@ -73,7 +73,7 @@ func (dp *Mysql) FreeIPIndex(index uint64) error {
 		return errors.New("Trying to free an IP that is outside the capacity of this pool")
 	}
 
-	query := "UPDATE dhcppool set free = 1, mac = $3, released = NOW() WHERE index = $1 AND free = 0 AND pool_name = $2"
+	query := "UPDATE dhcppool set free = 1, mac = $3, released = NOW() WHERE idx = $1 AND free = 0 AND pool_name = $2"
 	res, err := dp.SQL.Exec(query, index, dp.PoolName, FreeMac)
 
 	if err != nil {
@@ -99,7 +99,7 @@ func (dp *Mysql) IsFreeIPAtIndex(index uint64) bool {
 		return false
 	}
 
-	query := "SELECT free FROM dhcppool WHERE free = 1 AND index = $1 AND pool_name = $2"
+	query := "SELECT free FROM dhcppool WHERE free = 1 AND idx = $1 AND pool_name = $2"
 	res, err := dp.SQL.Exec(query, index, dp.PoolName)
 
 	if err != nil {
@@ -125,7 +125,7 @@ func (dp *Mysql) GetMACIndex(index uint64) (uint64, string, error) {
 		return index, FreeMac, errors.New("The index is not part of the pool")
 	}
 
-	rows, err := dp.SQL.Query("SELECT index, mac FROM dhcppool WHERE index = ? AND pool_name = ?", index, dp.PoolName)
+	rows, err := dp.SQL.Query("SELECT idx, mac FROM dhcppool WHERE idx = ? AND pool_name = ?", index, dp.PoolName)
 	defer rows.Close()
 	if err != nil {
 		return index, FreeMac, nil
@@ -174,7 +174,7 @@ func (dp *Mysql) GetFreeIPIndex(mac string) (uint64, string, error) {
 		// log.Fatal(err)
 	}
 
-	query := "UPDATE dhcppool SET mac = $1, free = 0 WHERE index = (SELECT index FROM dhcppool WHERE free = 1 AND pool_name = $2 ORDER BY RAND() LIMIT 1) AND @tmp_index := index"
+	query := "UPDATE dhcppool SET mac = $1, free = 0 WHERE index = (SELECT idx FROM dhcppool WHERE free = 1 AND pool_name = $2 ORDER BY RAND() LIMIT 1) AND @tmp_index := idx"
 	res, err := tx.Exec(query, mac, dp.PoolName)
 
 	if err != nil {
@@ -213,8 +213,6 @@ func (dp *Mysql) IndexInPool(index uint64) bool {
 
 // Returns the amount of free IPs in the pool
 func (dp *Mysql) FreeIPsRemaining() uint64 {
-	dp.DHCPPool.lock.Lock()
-	defer dp.DHCPPool.lock.Unlock()
 	return uint64(len(dp.DHCPPool.free))
 }
 

@@ -133,14 +133,14 @@ SET    locationlog.voip = node.voip;
 CREATE TABLE dhcppool (
   id                    int(11) unsigned NOT NULL auto_increment,
   pool_name             varchar(30) NOT NULL,
-  index                 int(11) NOT NULL,
+  idx                   int(11) NOT NULL,
   mac                   VARCHAR(30) NOT NULL,
   free                  BOOLEAN NOT NULL default '1',
   released              DATETIME NULL default NULL,
   PRIMARY KEY (id),
-  KEY radippool_poolname_expire (pool_name, index),
+  KEY radippool_poolname_expire (pool_name, idx),
   KEY mac (mac),
-  KEY released (released),
-) ENGINE=InnoDB;
+  KEY released (released)
+) ENGINE=INNODB;
 
 INSERT INTO pf_version (id, version) VALUES (@VERSION_INT, CONCAT_WS('.', @MAJOR_VERSION, @MINOR_VERSION, @SUBMINOR_VERSION)); 
