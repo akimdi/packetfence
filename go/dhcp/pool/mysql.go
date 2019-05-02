@@ -32,7 +32,7 @@ func (dp *Mysql) NewDHCPPool(capacity uint64) {
 	for i := uint64(0); i < capacity; i++ {
 		// Need to test err
 		rows, _ := dp.SQL.Query("INSERT INTO dhcppool (pool_name, idx) VALUES (?, ?) ON DUPLICATE KEY UPDATE id=id", dp.PoolName, i)
-		defer rows.Close()
+		rows.Close()
 	}
 	dp.DHCPPool = d
 }
@@ -47,8 +47,8 @@ func (dp *Mysql) ReserveIPIndex(index uint64, mac string) (error, string) {
 	if index >= dp.DHCPPool.capacity {
 		return errors.New("Trying to reserve an IP that is outside the capacity of this pool"), FreeMac
 	}
-	query := "UPDATE dhcppool SET free = 0, mac = $3 WHERE idx = $1 AND free = 1 AND pool_name = $2"
-	res, err := dp.SQL.Exec(query, index, dp.PoolName, mac)
+	query := "UPDATE dhcppool SET free = 0, mac = ? WHERE idx = ? AND free = 1 AND pool_name = ?"
+	res, err := dp.SQL.Exec(query, mac, index, dp.PoolName)
 
 	if err != nil {
 		return errors.New("IP is already reserved"), FreeMac
@@ -73,8 +73,8 @@ func (dp *Mysql) FreeIPIndex(index uint64) error {
 		return errors.New("Trying to free an IP that is outside the capacity of this pool")
 	}
 
-	query := "UPDATE dhcppool set free = 1, mac = $3, released = NOW() WHERE idx = $1 AND free = 0 AND pool_name = $2"
-	res, err := dp.SQL.Exec(query, index, dp.PoolName, FreeMac)
+	query := "UPDATE dhcppool set free = 1, mac = ?, released = NOW() WHERE idx = ? AND free = 0 AND pool_name = ?"
+	res, err := dp.SQL.Exec(query, FreeMac, index, dp.PoolName)
 
 	if err != nil {
 		return errors.New("IP is already free")
@@ -99,7 +99,7 @@ func (dp *Mysql) IsFreeIPAtIndex(index uint64) bool {
 		return false
 	}
 
-	query := "SELECT free FROM dhcppool WHERE free = 1 AND idx = $1 AND pool_name = $2"
+	query := "SELECT free FROM dhcppool WHERE free = 1 AND idx = ? AND pool_name = ?"
 	res, err := dp.SQL.Exec(query, index, dp.PoolName)
 
 	if err != nil {
@@ -146,24 +146,9 @@ func (dp *Mysql) GetMACIndex(index uint64) (uint64, string, error) {
 // Returns a random free IP address, an error if the pool is full
 func (dp *Mysql) GetFreeIPIndex(mac string) (uint64, string, error) {
 
-	// Pool is full ?
-	rows, err := dp.SQL.Query("SELECT COUNT(*) FROM dhcppool WHERE free = 1 AND pool_name = ?", dp.PoolName)
-	defer rows.Close()
-
-	if err != nil {
+	Count := dp.FreeIPsRemaining()
+	if Count == 0 {
 		return 0, FreeMac, errors.New("DHCP pool is full")
-	}
-	var (
-		Count int
-	)
-	for rows.Next() {
-		err := rows.Scan(&Count)
-		if err != nil {
-			return 0, FreeMac, errors.New("DHCP pool is full")
-		}
-		if Count == 0 {
-			return 0, FreeMac, errors.New("DHCP pool is full")
-		}
 	}
 
 	// Search for available index
@@ -171,36 +156,45 @@ func (dp *Mysql) GetFreeIPIndex(mac string) (uint64, string, error) {
 	tx, err := dp.SQL.Begin()
 
 	if err != nil {
-		// log.Fatal(err)
+		return 0, FreeMac, err
 	}
 
-	query := "UPDATE dhcppool SET mac = $1, free = 0 WHERE index = (SELECT idx FROM dhcppool WHERE free = 1 AND pool_name = $2 ORDER BY RAND() LIMIT 1) AND @tmp_index := idx"
-	res, err := tx.Exec(query, mac, dp.PoolName)
+	query := "UPDATE dhcppool D SET D.mac = ?, D.free = 0 WHERE D.pool_name = ? AND D.idx IN ( SELECT temp.tmpidx FROM ( SELECT idx as tmpidx FROM dhcppool P WHERE P.free = 1 AND P.pool_name = ? ORDER BY RAND() LIMIT 1 ) AS temp ) AND @tmp_index := idx"
+	res, err := tx.Exec(query, mac, dp.PoolName, dp.PoolName)
 
 	if err != nil {
-		return 0, FreeMac, errors.New("DHCP pool is full")
+		tx.Commit()
+		return 0, FreeMac, err
 
 	} else {
 		count, err2 := res.RowsAffected()
 		if err2 != nil {
-			return 0, FreeMac, errors.New("DHCP pool is full")
+			tx.Commit()
+			return 0, FreeMac, err2
 		} else {
 			if count == 1 {
 				query = "SELECT @tmp_index"
-				rows, err = tx.Query(query)
+				rows, err := tx.Query(query)
+				if err != nil {
+					tx.Commit()
+					return 0, FreeMac, err2
+				}
 				var (
 					Index int
 				)
 				for rows.Next() {
 					err := rows.Scan(&Index)
+					tx.Commit()
 					if err != nil {
-						return uint64(Index), mac, nil
+						return 0, FreeMac, err
 					}
+					return uint64(Index), mac, nil
 				}
-				return 0, FreeMac, errors.New("DHCP pool is full")
-				// return true
+				tx.Commit()
+				return 0, FreeMac, errors.New("Not able to fetch the index from the db")
 			} else {
-				return 0, FreeMac, errors.New("DHCP pool is full")
+				tx.Commit()
+				return 0, FreeMac, errors.New("Doesn't suppose to reach here")
 			}
 		}
 	}
@@ -213,7 +207,28 @@ func (dp *Mysql) IndexInPool(index uint64) bool {
 
 // Returns the amount of free IPs in the pool
 func (dp *Mysql) FreeIPsRemaining() uint64 {
-	return uint64(len(dp.DHCPPool.free))
+
+	rows, err := dp.SQL.Query("SELECT COUNT(*) FROM dhcppool WHERE free = 1 AND pool_name = ?", dp.PoolName)
+	defer rows.Close()
+
+	if err != nil {
+		return 0
+	}
+	var (
+		Count int
+	)
+	for rows.Next() {
+		err := rows.Scan(&Count)
+		if err != nil {
+			return 0
+		}
+		if Count == 0 {
+			return 0
+		} else {
+			return uint64(Count)
+		}
+	}
+	return 0
 }
 
 // Returns the capacity of the pool
@@ -227,42 +242,6 @@ func (dp *Mysql) GetIssues(macs []string) ([]string, map[uint64]string) {
 	var duplicateInPool map[uint64]string
 	duplicateInPool = make(map[uint64]string)
 
-	// var count int
-	// var saveindex uint64
-	// for i := uint64(0); i < dp.DHCPPool.capacity; i++ {
-	// 	if dp.DHCPPool.free[i] {
-	// 		continue
-	// 	}
-	// 	for _, mac := range macs {
-	// 		if dp.DHCPPool.mac[i] == mac {
-	// 			found = true
-	// 		}
-	// 	}
-	// 	if !found {
-	// 		inPoolNotInCache = append(inPoolNotInCache, dp.DHCPPool.mac[i]+", "+strconv.Itoa(int(i)))
-	// 	}
-	// }
-	// for _, mac := range macs {
-	// 	count = 0
-	// 	saveindex = 0
-	//
-	// 	for i := uint64(0); i < dp.DHCPPool.capacity; i++ {
-	// 		if dp.DHCPPool.free[i] {
-	// 			continue
-	// 		}
-	// 		if dp.DHCPPool.mac[i] == mac {
-	// 			if count == 0 {
-	// 				saveindex = i
-	// 			}
-	// 			if count == 1 {
-	// 				duplicateInPool[saveindex] = mac
-	// 				duplicateInPool[i] = mac
-	// 			} else if count > 1 {
-	// 				duplicateInPool[i] = mac
-	// 			}
-	// 			count++
-	// 		}
-	// 	}
-	// }
+	// TODO
 	return inPoolNotInCache, duplicateInPool
 }

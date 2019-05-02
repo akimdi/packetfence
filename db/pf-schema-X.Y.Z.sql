@@ -1293,10 +1293,10 @@ CREATE TABLE dhcppool (
   free                  BOOLEAN NOT NULL default '1',
   released              DATETIME NULL default NULL,
   PRIMARY KEY (id),
-  KEY radippool_poolname_expire (pool_name, idx),
+  UNIQUE KEY dhcppool_poolname_idx (pool_name, idx),
   KEY mac (mac),
   KEY released (released)
-) ENGINE=INNODB;
+) ENGINE=InnoDB;
 
 --
 -- Updating to current version

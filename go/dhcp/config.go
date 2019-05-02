@@ -207,7 +207,7 @@ func (d *Interfaces) readConfig() {
 							DHCPScope.leaseRange = dhcp.IPRange(ip, ips)
 
 							// Initialize dhcp pool
-							available, _ := pool.CreatePool("Memory", uint64(dhcp.IPRange(ip, ips)), DHCPNet.network.IP.String()+Role, MySQLdatabase)
+							available, _ := pool.CreatePool("memory", uint64(dhcp.IPRange(ip, ips)), DHCPNet.network.IP.String()+Role, MySQLdatabase)
 
 							DHCPScope.available = available
 
@@ -269,14 +269,9 @@ func (d *Interfaces) readConfig() {
 						DHCPScope.leaseRange = dhcp.IPRange(net.ParseIP(ConfNet.DhcpStart), net.ParseIP(ConfNet.DhcpEnd))
 
 						// Initialize dhcp pool
-
-						// Initialize dhcp pool
-						available, _ := pool.CreatePool("Memory", uint64(dhcp.IPRange(net.ParseIP(ConfNet.DhcpStart), net.ParseIP(ConfNet.DhcpEnd))), DHCPNet.network.IP.String(), MySQLdatabase)
+						available, _ := pool.CreatePool("mysql", uint64(dhcp.IPRange(net.ParseIP(ConfNet.DhcpStart), net.ParseIP(ConfNet.DhcpEnd))), DHCPNet.network.IP.String(), MySQLdatabase)
 
 						DHCPScope.available = available
-
-						// available := pool.NewDHCPPool(uint64(dhcp.IPRange(net.ParseIP(ConfNet.DhcpStart), net.ParseIP(ConfNet.DhcpEnd))))
-						// DHCPScope.available = available
 
 						// Initialize hardware cache
 						hwcache := cache.New(time.Duration(seconds)*time.Second, 2*time.Second)
@@ -291,7 +286,6 @@ func (d *Interfaces) readConfig() {
 						DHCPScope.hwcache = hwcache
 
 						xid := cache.New(time.Duration(4)*time.Second, 2*time.Second)
-
 						DHCPScope.xid = xid
 						wg.Add(1)
 						go func() {
