@@ -638,7 +638,10 @@ func (h *Interface) ServeDHCP(ctx context.Context, p dhcp.Packet, msgType dhcp.M
 					// Update Global Caches
 					GlobalIpCache.Set(reqIP.String(), p.CHAddr().String(), cacheDuration)
 					GlobalMacCache.Set(p.CHAddr().String(), reqIP.String(), cacheDuration)
-					MysqlUpdateIp4Log(p.CHAddr().String(), reqIP.String(), cacheDuration)
+					err := MysqlUpdateIp4Log(p.CHAddr().String(), reqIP.String(), cacheDuration)
+					if err != nil {
+						log.LoggerWContext(ctx).Info(err.Error())
+					}
 					// Update the cache
 					log.LoggerWContext(ctx).Info("DHCPACK on " + reqIP.String() + " to " + clientMac + " (" + clientHostname + ")")
 
