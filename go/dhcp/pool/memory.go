@@ -197,3 +197,8 @@ func (dp *Memory) FreeIPsRemaining() uint64 {
 func (dp *Memory) Capacity() uint64 {
 	return dp.DHCPPool.capacity
 }
+
+// Can act even if the VIP is not here
+func (dp *Memory) Listen() bool {
+	return false
+}

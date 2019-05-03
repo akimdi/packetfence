@@ -21,6 +21,7 @@ type PoolBackend interface {
 	Capacity() uint64
 	GetDHCPPool() DHCPPool
 	GetIssues(macs []string) ([]string, map[uint64]string)
+	Listen() bool
 }
 
 type PoolCreater func(uint64, string, *sql.DB) (PoolBackend, error)

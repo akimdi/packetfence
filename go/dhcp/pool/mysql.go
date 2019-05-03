@@ -245,3 +245,8 @@ func (dp *Mysql) GetIssues(macs []string) ([]string, map[uint64]string) {
 	// TODO
 	return inPoolNotInCache, duplicateInPool
 }
+
+// Can act even if the VIP is not here
+func (dp *Mysql) Listen() bool {
+	return true
+}
