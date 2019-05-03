@@ -50,6 +50,17 @@ has_field 'dhcp_max_lease_time' =>
    required_when => { 'fake_mac_enabled' => sub { $_[0] ne '1' } },
    messages => { required => 'Please specify the maximum DHCP lease time.' },
   );
+has_field 'pool_backend' =>
+  (
+   type => 'Select',
+   label => 'DHCP Pool Backend Type',
+   required => 1,
+   options => [
+        { value => $pf::constants::dhcp::MEMORY_POOL, label => 'Memory Pool'},
+        { value => $pf::constants::dhcp::MYSQL_POOL, label => 'Mysql Pool'},
+   ],
+   default => $pf::constants::dhcp::MEMORY_POOL,
+  );
 has_field 'ip_reserved' =>
   (
    type => 'TextArea',

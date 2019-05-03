@@ -29,6 +29,8 @@ func (dp *Mysql) NewDHCPPool(capacity uint64) {
 		mac:      make(map[uint64]string),
 		capacity: capacity,
 	}
+	rows, _ := dp.SQL.Query("DELETE FROM dhcppool WHERE pool_name=?", dp.PoolName)
+	rows.Close()
 	for i := uint64(0); i < capacity; i++ {
 		// Need to test err
 		rows, _ := dp.SQL.Query("INSERT INTO dhcppool (pool_name, idx) VALUES (?, ?) ON DUPLICATE KEY UPDATE id=id", dp.PoolName, i)

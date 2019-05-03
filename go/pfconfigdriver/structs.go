@@ -274,6 +274,7 @@ type NetworkConf struct {
 	SplitNetwork            string `json:"split_network"`
 	RegNetwork              string `json:"reg_network"`
 	PortalFQDN              string `json:"portal_fqdn"`
+	PoolBackend             string `json:"pool_backend"`
 }
 
 type Interface struct {
@@ -310,6 +311,8 @@ type RessourseNetworkConf struct {
 	IpReserved              string    `json:"ip_reserved"`
 	IpAssigned              string    `json:"ip_assigned"`
 	Interface               Interface `json:"interface"`
+	PortalFQDN              string    `json:"portal_fqdn"`
+	PoolBackend             string    `json:"pool_backend"`
 }
 
 type PfRoles struct {
